@@ -4,12 +4,6 @@ import { extension_settings, loadExtensionSettings, getContext, renderExtensionT
 import { saveSettingsDebounced, eventSource, event_types } from '../../../../script.js';
 import { getTokenCountAsync } from '../../../tokenizers.js';
 
-// 文件: public/extensions/third-party/day5/index.js
-
-import { extension_settings, loadExtensionSettings, getContext, renderExtensionTemplateAsync } from '../../../extensions.js';
-import { saveSettingsDebounced, eventSource, event_types } from '../../../../script.js';
-import { getTokenCountAsync } from '../../../tokenizers.js';
-
 (function () {
     // --- 插件基础信息 ---
     const extensionName = "day2";
