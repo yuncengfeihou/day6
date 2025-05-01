@@ -38,15 +38,38 @@ function readData(entityId) { /* ... (保持不变) ... */
         }
     });
 }
-function writeData(data) { /* ... (保持不变) ... */
+function writeData(data) {
     return new Promise(async (resolve, reject) => {
         try {
             const currentDb = await openDB();
             const transaction = currentDb.transaction(STORE_NAME, 'readwrite');
             const store = transaction.objectStore(STORE_NAME);
+
+            // *** 添加日志：确认即将写入的数据 ***
+            console.log('[Day1 Worker] writeData: Attempting to write data for entityId:', data.entityId, 'Data snapshot:', JSON.stringify(data)); // 打印完整数据快照
+
             const request = store.put(data);
-            request.onerror = (event) => reject('Error writing data: ' + event.target.error);
-            request.onsuccess = (event) => resolve(event.target.result);
+
+            request.onerror = (event) => {
+                // *** 添加日志：写入错误 ***
+                console.error('[Day1 Worker] writeData: Error writing data for entityId:', data.entityId, 'Error:', event.target.error);
+                reject('Error writing data: ' + event.target.error);
+            };
+            request.onsuccess = (event) => {
+                 // *** 添加日志：写入成功 ***
+                // console.log('[Day1 Worker] writeData: Successfully wrote data for entityId:', data.entityId, 'Result:', event.target.result); // 可以取消注释以查看成功信息
+                resolve(event.target.result);
+            };
+
+            transaction.oncomplete = () => {
+                 // *** 添加日志：事务完成 ***
+                // console.log('[Day1 Worker] writeData: Transaction completed for entityId:', data.entityId); // 可以取消注释以查看事务完成信息
+            };
+            transaction.onerror = (event) => {
+                // *** 添加日志：事务错误 ***
+                console.error('[Day1 Worker] writeData: Transaction error for entityId:', data.entityId, 'Error:', event.target.error);
+            };
+
         } catch (error) {
             console.error("Day1 Worker: Error during writeData transaction setup:", error);
             reject(error);
