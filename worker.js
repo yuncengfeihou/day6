@@ -1,4 +1,4 @@
-// 文件: public/extensions/third-party/day5/worker.js
+// 文件: public/extensions/third-party/day6/worker.js
 
 const DB_NAME = 'SillyTavernDay1Stats';
 const STORE_NAME = 'dailyStats';
@@ -148,6 +148,8 @@ self.onmessage = async (event) => {
             if (!stats) stats = { entityId, entityName: 'Global Stats', dailyData: {} };
             const dailyStat = getOrCreateDailyStat(stats, dateString, entityId);
             dailyStat.totalVisibleDurationMs += durationMs;
+             // *** 添加日志 ***
+            console.log('[Day1 Worker] Writing global duration. Payload:', payload, 'New Daily Visible:', dailyStat.totalVisibleDurationMs);
             await writeData(stats);
         } catch (error) { console.error(`Worker Error (recordDailyDuration):`, error); }
     }
@@ -175,6 +177,8 @@ self.onmessage = async (event) => {
             const dailyStat = getOrCreateDailyStat(stats, dateString, entityId);
             dailyStat.dailyInteractionDurationMs += durationMs; // *** 累加到当日实体时长 ***
 
+             // *** 添加日志 ***
+            console.log('[Day1 Worker] Writing entity duration. Payload:', payload, 'New Total:', stats.totalInteractionDurationMs, 'New Daily:', dailyStat.dailyInteractionDurationMs);
             await writeData(stats);
             // console.log(`Worker: Recorded entity duration ${durationMs}ms for ${entityId}. New total: ${stats.totalInteractionDurationMs}ms, New daily: ${dailyStat.dailyInteractionDurationMs}ms`);
         } catch (error) {
