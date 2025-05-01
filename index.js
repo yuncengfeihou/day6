@@ -4,6 +4,12 @@ import { extension_settings, loadExtensionSettings, getContext, renderExtensionT
 import { saveSettingsDebounced, eventSource, event_types } from '../../../../script.js';
 import { getTokenCountAsync } from '../../../tokenizers.js';
 
+// 文件: public/extensions/third-party/day5/index.js
+
+import { extension_settings, loadExtensionSettings, getContext, renderExtensionTemplateAsync } from '../../../extensions.js';
+import { saveSettingsDebounced, eventSource, event_types } from '../../../../script.js';
+import { getTokenCountAsync } from '../../../tokenizers.js';
+
 (function () {
     // --- 插件基础信息 ---
     const extensionName = "day2";
@@ -96,6 +102,8 @@ import { getTokenCountAsync } from '../../../tokenizers.js';
     function recordVisibleDuration() {
         if (lastVisibleTimestamp) {
             const durationMs = Date.now() - lastVisibleTimestamp;
+             // *** 添加日志 ***
+            console.log('[Day1 Main] Recording Visible Duration. LastVisible:', lastVisibleTimestamp, 'Duration:', durationMs);
             if (durationMs > 0) {
                 sendMessageToWorker('recordDailyDuration', {
                     durationMs: durationMs,
@@ -103,6 +111,9 @@ import { getTokenCountAsync } from '../../../tokenizers.js';
                 });
             }
             lastVisibleTimestamp = null;
+        } else {
+             // *** 添加日志 ***
+            console.log('[Day1 Main] Recording Visible Duration. LastVisible: null, Duration: N/A');
         }
     }
 
@@ -110,6 +121,8 @@ import { getTokenCountAsync } from '../../../tokenizers.js';
     function recordEntityDuration() {
         if (entityStartTime && currentEntityId) {
             const durationMs = Date.now() - entityStartTime;
+             // *** 添加日志 ***
+            console.log('[Day1 Main] Recording Entity Duration. Entity:', currentEntityId, 'Start:', entityStartTime, 'Duration:', durationMs);
             if (durationMs > 0) {
                 sendMessageToWorker('recordEntityDuration', {
                     entityId: currentEntityId,
@@ -119,10 +132,15 @@ import { getTokenCountAsync } from '../../../tokenizers.js';
                 });
             }
             entityStartTime = null;
+        } else {
+            // *** 添加日志 ***
+            console.log('[Day1 Main] Recording Entity Duration. Entity:', currentEntityId, 'Start:', entityStartTime, 'Duration: N/A');
         }
     }
 
     function handleVisibilityChange() {
+        // *** 添加日志 ***
+        console.log('[Day1 Main] Visibility changed:', document.visibilityState);
         if (document.visibilityState === 'visible') {
             lastVisibleTimestamp = Date.now();
             if (currentEntityId) {
@@ -261,6 +279,9 @@ import { getTokenCountAsync } from '../../../tokenizers.js';
                 newEntityName = context.characters[context.characterId].name;
             }
         }
+         // *** 添加日志 ***
+        console.log('[Day1 Main] Chat changed. Old Entity:', currentEntityId, 'New Entity:', newEntityId);
+
         if (document.visibilityState === 'visible') recordEntityDuration();
         if (newEntityId !== currentEntityId) {
             currentEntityId = newEntityId;
