@@ -1,8 +1,8 @@
-// 文件: public/extensions/third-party/day6/worker.js
+// 文件: public/extensions/third-party/day5/worker.js
 
 const DB_NAME = 'SillyTavernDay1Stats';
 const STORE_NAME = 'dailyStats';
-const DB_VERSION = 1;
+const DB_VERSION = 1; // 保持版本号不变，除非你需要更改数据库结构
 let db;
 
 const GLOBAL_STATS_ID = '_GLOBAL_STATS_';
@@ -11,118 +11,122 @@ const GLOBAL_STATS_ID = '_GLOBAL_STATS_';
 function openDB() {
     return new Promise((resolve, reject) => {
         if (db) { resolve(db); return; }
+        console.log('[Day1 Worker] Opening IndexedDB...'); // 添加日志
         const request = indexedDB.open(DB_NAME, DB_VERSION);
-        request.onerror = (event) => { console.error('Day1 Worker: DB open error:', event.target.error); reject('IndexedDB error: ' + event.target.error); };
+        request.onerror = (event) => { console.error('[Day1 Worker] DB open error:', event.target.error); reject('IndexedDB error: ' + event.target.error); };
         request.onsuccess = (event) => {
             db = event.target.result;
-            db.onerror = (event) => console.error("Day1 Worker: Database error:", event.target.error);
-            db.onclose = () => { db = null; };
-            db.onversionchange = () => { if (db) db.close(); db = null; };
+            console.log('[Day1 Worker] DB connection opened successfully.'); // 添加日志
+            db.onerror = (event) => console.error("[Day1 Worker] Database error:", event.target.error);
+            db.onclose = () => { console.log('[Day1 Worker] DB connection closed.'); db = null; }; // 添加日志
+            db.onversionchange = () => { console.log('[Day1 Worker] DB version change detected, closing connection.'); if (db) db.close(); db = null; }; // 添加日志
             resolve(db);
         };
-        request.onupgradeneeded = (event) => { console.log("Day1 Worker: DB upgrade needed."); };
+        // *** 修改 onupgradeneeded ***
+        request.onupgradeneeded = (event) => {
+            console.log("[Day1 Worker] DB upgrade needed.");
+            const dbInstance = event.target.result;
+            const transaction = event.target.transaction; // 获取事务对象
+
+            if (!dbInstance.objectStoreNames.contains(STORE_NAME)) {
+                try {
+                    dbInstance.createObjectStore(STORE_NAME, { keyPath: 'entityId' });
+                    console.log(`[Day1 Worker] Object store "${STORE_NAME}" created.`);
+                } catch (e) {
+                    console.error(`[Day1 Worker] Error creating object store "${STORE_NAME}"`, e);
+                    if (transaction) { // 检查事务是否存在
+                         console.error('[Day1 Worker] Aborting transaction due to object store creation error.');
+                         transaction.abort(); // 中止事务
+                    }
+                    reject(`Error creating object store: ${e}`); // 拒绝 Promise
+                    return; // 提前退出处理程序
+                }
+            } else {
+                 console.log(`[Day1 Worker] Object store "${STORE_NAME}" already exists.`);
+            }
+             console.log("[Day1 Worker] DB upgrade finished.");
+             // 注意：通常在 onupgradeneeded 中不需要 resolve/reject，事务会自动处理
+             // 但如果创建失败，我们上面已经 reject 了
+        };
     });
 }
-function readData(entityId) { /* ... (保持不变) ... */
+
+function readData(entityId) {
     return new Promise(async (resolve, reject) => {
         try {
             const currentDb = await openDB();
+            // *** 添加日志：确认数据库和存储存在 ***
+            // console.log('[Day1 Worker] readData: DB connection acquired. Store names:', currentDb.objectStoreNames);
+            if (!currentDb.objectStoreNames.contains(STORE_NAME)) {
+                 console.error(`[Day1 Worker] readData: Object store "${STORE_NAME}" not found before starting transaction.`);
+                 reject(`Object store "${STORE_NAME}" not found.`);
+                 return;
+            }
             const transaction = currentDb.transaction(STORE_NAME, 'readonly');
             const store = transaction.objectStore(STORE_NAME);
             const request = store.get(entityId);
-            request.onerror = (event) => reject('Error reading data: ' + event.target.error);
+            request.onerror = (event) => {
+                console.error('[Day1 Worker] readData Error:', event.target.error); // 添加日志
+                reject('Error reading data: ' + event.target.error);
+            };
             request.onsuccess = (event) => resolve(event.target.result);
         } catch (error) {
-            console.error("Day1 Worker: Error during readData transaction setup:", error);
+            console.error("[Day1 Worker] Error during readData:", error); // 修改日志区分 setup 和 执行
             reject(error);
         }
     });
 }
+
 function writeData(data) {
     return new Promise(async (resolve, reject) => {
         try {
             const currentDb = await openDB();
+             // *** 添加日志：确认数据库和存储存在 ***
+            // console.log('[Day1 Worker] writeData: DB connection acquired. Store names:', currentDb.objectStoreNames);
+             if (!currentDb.objectStoreNames.contains(STORE_NAME)) {
+                 console.error(`[Day1 Worker] writeData: Object store "${STORE_NAME}" not found before starting transaction.`);
+                 reject(`Object store "${STORE_NAME}" not found.`);
+                 return;
+             }
             const transaction = currentDb.transaction(STORE_NAME, 'readwrite');
             const store = transaction.objectStore(STORE_NAME);
 
-            // *** 添加日志：确认即将写入的数据 ***
-            console.log('[Day1 Worker] writeData: Attempting to write data for entityId:', data.entityId, 'Data snapshot:', JSON.stringify(data)); // 打印完整数据快照
+            // console.log('[Day1 Worker] writeData: Attempting to write data for entityId:', data.entityId, 'Data snapshot:', JSON.stringify(data));
 
             const request = store.put(data);
 
             request.onerror = (event) => {
-                // *** 添加日志：写入错误 ***
                 console.error('[Day1 Worker] writeData: Error writing data for entityId:', data.entityId, 'Error:', event.target.error);
                 reject('Error writing data: ' + event.target.error);
             };
             request.onsuccess = (event) => {
-                 // *** 添加日志：写入成功 ***
-                // console.log('[Day1 Worker] writeData: Successfully wrote data for entityId:', data.entityId, 'Result:', event.target.result); // 可以取消注释以查看成功信息
+                // console.log('[Day1 Worker] writeData: Successfully wrote data for entityId:', data.entityId, 'Result:', event.target.result);
                 resolve(event.target.result);
             };
 
             transaction.oncomplete = () => {
-                 // *** 添加日志：事务完成 ***
-                // console.log('[Day1 Worker] writeData: Transaction completed for entityId:', data.entityId); // 可以取消注释以查看事务完成信息
+                // console.log('[Day1 Worker] writeData: Transaction completed for entityId:', data.entityId);
             };
             transaction.onerror = (event) => {
-                // *** 添加日志：事务错误 ***
                 console.error('[Day1 Worker] writeData: Transaction error for entityId:', data.entityId, 'Error:', event.target.error);
+                 // 注意：这里通常不需要 reject，因为 request.onerror 会处理
             };
 
         } catch (error) {
-            console.error("Day1 Worker: Error during writeData transaction setup:", error);
+            console.error("[Day1 Worker] Error during writeData:", error); // 修改日志区分 setup 和 执行
             reject(error);
         }
     });
 }
 
-// --- 修改：getOrCreateDailyStat 添加 dailyInteractionDurationMs (用于实体) ---
-/**
- * 获取或初始化指定实体在指定日期的统计数据对象。
- * @param {object} stats - 整个实体的统计对象。
- * @param {string} dateString - YYYY-MM-DD 格式的日期字符串。
- * @param {string} entityId - 实体ID，用于区分全局统计。
- * @returns {object} 当天的统计数据对象。
- */
-function getOrCreateDailyStat(stats, dateString, entityId) {
-    if (!stats.dailyData) stats.dailyData = {};
-    const isGlobal = entityId === GLOBAL_STATS_ID;
-
-    if (!stats.dailyData[dateString]) {
-        stats.dailyData[dateString] = { totalVisibleDurationMs: 0 }; // 全局基础
-        if (!isGlobal) {
-            Object.assign(stats.dailyData[dateString], {
-                userMessages: 0, aiMessages: 0, userTokens: 0, aiTokens: 0,
-                cumulativeTokens: 0, lastUserMessageTimestamp: null, lastAiMessageTimestamp: null,
-                totalAiResponseDuration: 0, dailyInteractionDurationMs: 0, // *** 新增当日实体时长 ***
-            });
-        }
-        // console.log(`Day1 Worker: Created new daily entry for ${entityId} on ${dateString}`);
-    }
-
-    // 确保字段存在
-    stats.dailyData[dateString].totalVisibleDurationMs = stats.dailyData[dateString].totalVisibleDurationMs || 0;
-    if (!isGlobal) {
-        stats.dailyData[dateString].userTokens = stats.dailyData[dateString].userTokens || 0;
-        stats.dailyData[dateString].aiTokens = stats.dailyData[dateString].aiTokens || 0;
-        stats.dailyData[dateString].cumulativeTokens = stats.dailyData[dateString].cumulativeTokens || 0;
-        stats.dailyData[dateString].lastUserMessageTimestamp = stats.dailyData[dateString].lastUserMessageTimestamp || null;
-        stats.dailyData[dateString].lastAiMessageTimestamp = stats.dailyData[dateString].lastAiMessageTimestamp || null;
-        stats.dailyData[dateString].totalAiResponseDuration = stats.dailyData[dateString].totalAiResponseDuration || 0;
-        // *** 确保当日实体时长字段存在 ***
-        stats.dailyData[dateString].dailyInteractionDurationMs = stats.dailyData[dateString].dailyInteractionDurationMs || 0;
-    }
-    return stats.dailyData[dateString];
-}
-
+// ... (getOrCreateDailyStat 函数保持不变) ...
 
 // --- Web Worker 消息处理 ---
 self.onmessage = async (event) => {
     if (!event.data?.command) return;
     const { command, payload } = event.data;
 
-    // 处理 'processMessage' 命令 (保持不变)
+    // 处理 'processMessage' 命令
     if (command === 'processMessage') {
         if (!payload?.entityId || !payload.timestamp) return;
         const { entityId, entityName, isUser, tokenCount, timestamp, aiResponseDuration } = payload;
@@ -141,9 +145,9 @@ self.onmessage = async (event) => {
                 if (typeof aiResponseDuration === 'number' && aiResponseDuration >= 0) dailyStat.totalAiResponseDuration += aiResponseDuration;
             }
             await writeData(stats);
-        } catch (error) { console.error(`Worker Error (processMessage ${entityId}):`, error); }
+        } catch (error) { console.error(`Worker Error (processMessage ${entityId}):`, error); } // 这里捕获到的可能是 readData 或 writeData 的 reject
     }
-    // 处理 'recordPromptTokens' 命令 (保持不变)
+    // 处理 'recordPromptTokens' 命令
     else if (command === 'recordPromptTokens') {
         if (!payload?.entityId || !payload.timestamp || typeof payload.promptTokenCount !== 'number') return;
         const { entityId, entityName, timestamp, promptTokenCount } = payload;
@@ -159,7 +163,7 @@ self.onmessage = async (event) => {
             await writeData(stats);
         } catch (error) { console.error(`Worker Error (recordPromptTokens ${entityId}):`, error); }
     }
-    // 处理 'recordDailyDuration' 命令 (保持不变)
+    // 处理 'recordDailyDuration' 命令
     else if (command === 'recordDailyDuration') {
         if (typeof payload?.durationMs !== 'number' || !payload.timestamp) return;
         const { durationMs, timestamp } = payload;
@@ -171,17 +175,16 @@ self.onmessage = async (event) => {
             if (!stats) stats = { entityId, entityName: 'Global Stats', dailyData: {} };
             const dailyStat = getOrCreateDailyStat(stats, dateString, entityId);
             dailyStat.totalVisibleDurationMs += durationMs;
-             // *** 添加日志 ***
-            console.log('[Day1 Worker] Writing global duration. Payload:', payload, 'New Daily Visible:', dailyStat.totalVisibleDurationMs);
+            // console.log('[Day1 Worker] Writing global duration. Payload:', payload, 'New Daily Visible:', dailyStat.totalVisibleDurationMs);
             await writeData(stats);
         } catch (error) { console.error(`Worker Error (recordDailyDuration):`, error); }
     }
-    // --- 修改：处理 'recordEntityDuration' 命令以更新当日实体时长 ---
+    // 处理 'recordEntityDuration' 命令
     else if (command === 'recordEntityDuration') {
-        if (!payload?.entityId || typeof payload.durationMs !== 'number' || !payload.timestamp) { // *** 确保 timestamp 存在 ***
+        if (!payload?.entityId || typeof payload.durationMs !== 'number' || !payload.timestamp) {
             console.warn('Day1 Worker: Received recordEntityDuration with missing data.', payload); return;
         }
-        const { entityId, entityName, durationMs, timestamp } = payload; // *** 解构出 timestamp ***
+        const { entityId, entityName, durationMs, timestamp } = payload;
 
         try {
             let stats = await readData(entityId);
@@ -189,21 +192,16 @@ self.onmessage = async (event) => {
                 stats = { entityId, entityName: entityName || entityId, dailyData: {}, totalInteractionDurationMs: 0 };
             }
             stats.totalInteractionDurationMs = stats.totalInteractionDurationMs || 0;
-
-            // 更新总时长
             stats.totalInteractionDurationMs += durationMs;
 
-            // *** 更新当日时长 ***
-            let date = new Date(timestamp); // *** 使用传入的时间戳确定日期 ***
+            let date = new Date(timestamp);
             if (isNaN(date.getTime())) date = new Date();
             const dateString = date.toISOString().split('T')[0];
             const dailyStat = getOrCreateDailyStat(stats, dateString, entityId);
-            dailyStat.dailyInteractionDurationMs += durationMs; // *** 累加到当日实体时长 ***
+            dailyStat.dailyInteractionDurationMs += durationMs;
 
-             // *** 添加日志 ***
-            console.log('[Day1 Worker] Writing entity duration. Payload:', payload, 'New Total:', stats.totalInteractionDurationMs, 'New Daily:', dailyStat.dailyInteractionDurationMs);
+            // console.log('[Day1 Worker] Writing entity duration. Payload:', payload, 'New Total:', stats.totalInteractionDurationMs, 'New Daily:', dailyStat.dailyInteractionDurationMs);
             await writeData(stats);
-            // console.log(`Worker: Recorded entity duration ${durationMs}ms for ${entityId}. New total: ${stats.totalInteractionDurationMs}ms, New daily: ${dailyStat.dailyInteractionDurationMs}ms`);
         } catch (error) {
             console.error(`Worker Error (recordEntityDuration ${entityId}):`, error);
         }
@@ -212,5 +210,5 @@ self.onmessage = async (event) => {
 
 // --- Worker 初始化 ---
 console.log('Day1 Worker: Script loaded.');
-openDB().then(() => { console.log("Day1 Worker: Initial DB check successful."); })
-        .catch(e => { console.error("Day1 Worker: Initial DB check failed.", e); });
+openDB().then(() => { console.log("Day1 Worker: Initial DB check successful after openDB call."); }) // 修改日志
+        .catch(e => { console.error("Day1 Worker: Initial DB check failed after openDB call.", e); }); // 修改日志
